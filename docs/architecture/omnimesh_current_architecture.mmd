@@ -1,0 +1,15 @@
+flowchart LR
+  TITLE[Baseline architecture before ingress revision]
+  P[Shopify / Stripe] -->|POST JSON| E[Express app]
+  E --> J[Global JSON parser]
+  J --> W[Webhook capture route]
+  W --> R[Key-based payload redaction]
+  R --> D[(proxy_events)]
+  W --> A[202 Accepted]
+  D --> T[tRPC public queries]
+  T --> U[Control Plane + Flight Recorder]
+  S[Drift simulator] --> D
+  L[Safe local replay] --> D
+
+  classDef warn fill:#fef3c7,stroke:#d97706,color:#78350f;
+  class J,W,T warn;

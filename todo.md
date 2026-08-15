@@ -1,0 +1,33 @@
+# Project TODO
+
+- [x] Define simplified tutorial learning path and motion language
+- [x] Implement slide-based tutorial with Tailwind transition and motion classes
+- [x] Add interactive verification with simulated healing animation and success feedback
+- [x] Simplify main dashboard view and add hover lift effects
+- [x] Run test suite and verify UI screenshot
+- [x] Save checkpoint and deliver result
+- [x] Identify verified specialist tools for webhook reliability, replay, and validation
+- [x] Evaluate tool fit and select the smallest high-leverage OmniMesh tool stack
+- [x] Define motion hierarchy that communicates interface state without distraction
+- [x] Add polished tutorial transitions, status movement, and responsive micro-interactions
+- [x] Validate animations respect reduced-motion preferences and maintain usable contrast
+- [x] Audit every agreed OmniMesh capability against current code and routes
+- [x] Implement missing event replay and Flight Recorder workflows or clearly defer them
+- [x] Reconcile onboarding copy with the actual capabilities that are deployed
+- [x] Run full functional and visual validation before final delivery
+- [x] Research recurring developer integration and webhook failure pain points
+- [x] Research founder buying triggers, alternatives, and willingness-to-pay signals
+- [x] Choose an evidence-backed OmniMesh wedge before further product implementation
+- [x] Document the no-match result from verified skill discovery and a pragmatic implementation stack decision
+- [x] Inventory current architecture, capability boundaries, and product claims
+- [x] Research authoritative webhook reliability, security, and developer-experience practices
+- [x] Produce a cited architecture review and target-state design diagrams
+- [x] Implement the highest-value architecture and UX revisions
+- [x] Validate revised reliability flows, reports, diagrams, and responsive UI
+- [x] Save checkpoint and deliver architecture review update
+- [x] Preserve provider raw request bodies and capture signature readiness explicitly
+- [x] Persist provider delivery identifiers and correct provider event-type extraction
+- [x] Surface real ingestion-security readiness in the control-plane experience
+- [x] Verify the intended GitHub remote for the OmniMesh project
+- [ ] Commit the completed OmniMesh architecture revision
+- [ ] Push the committed revision to GitHub and confirm the resulting commit

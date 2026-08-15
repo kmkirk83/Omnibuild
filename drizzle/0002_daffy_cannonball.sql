@@ -1,0 +1,2 @@
+ALTER TABLE `proxy_events` ADD `source_delivery_id` varchar(255);--> statement-breakpoint
+ALTER TABLE `proxy_events` ADD `signature_status` enum('not_configured','not_present','verified','invalid') DEFAULT 'not_configured' NOT NULL;
