@@ -29,5 +29,5 @@
 - [x] Persist provider delivery identifiers and correct provider event-type extraction
 - [x] Surface real ingestion-security readiness in the control-plane experience
 - [x] Verify the intended GitHub remote for the OmniMesh project
-- [ ] Commit the completed OmniMesh architecture revision
-- [ ] Push the committed revision to GitHub and confirm the resulting commit
+- [x] Commit the completed OmniMesh architecture revision
+- [x] Push the committed revision to GitHub and confirm the resulting commit
