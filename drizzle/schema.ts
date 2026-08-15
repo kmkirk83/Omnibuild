@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, json, float } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, float } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -15,6 +15,18 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
+export const tenantConfigs = mysqlTable("tenant_configs", {
+  id: int("id").autoincrement().primaryKey(),
+  workspaceName: varchar("workspace_name", { length: 128 }).notNull().default("Default Workspace"),
+  shopifySecret: varchar("shopify_secret", { length: 255 }),
+  stripeSecret: varchar("stripe_secret", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TenantConfig = typeof tenantConfigs.$inferSelect;
+export type InsertTenantConfig = typeof tenantConfigs.$inferInsert;
+
 export const proxyEvents = mysqlTable("proxy_events", {
   id: int("id").autoincrement().primaryKey(),
   provider: varchar("provider", { length: 64 }).notNull(), // 'shopify' | 'stripe' | 'custom'
@@ -28,6 +40,7 @@ export const proxyEvents = mysqlTable("proxy_events", {
   signatureStatus: mysqlEnum("signature_status", ["not_configured", "not_present", "verified", "invalid"]).default("not_configured").notNull(),
   deliveryState: mysqlEnum("delivery_state", ["received", "delivered", "failed", "replayed"]).default("received").notNull(),
   attemptCount: int("attempt_count").default(1).notNull(),
+  isDuplicate: int("is_duplicate").default(0).notNull(),
   replayedFromEventId: int("replayed_from_event_id"),
   lastError: text("last_error"),
   healed: int("healed").default(0).notNull(), // 0 = false, 1 = true

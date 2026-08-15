@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { publicProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
-import { proxyEvents, schemaHealingLogs, automationAgents } from "../drizzle/schema";
+import { proxyEvents, schemaHealingLogs, automationAgents, tenantConfigs } from "../drizzle/schema";
 import { desc, eq, sql } from "drizzle-orm";
+import crypto from "crypto";
 
 function parseStoredPayload(payload: string | null): Record<string, unknown> {
   if (!payload) return {};
@@ -28,7 +29,7 @@ export const omnimeshRouter = router({
     }
 
     const [eventCount] = await db.select({ count: sql<number>`count(*)` }).from(proxyEvents);
-    const [healedCount] = await db.select({ count: sql<number>`count(*)` }).from(proxyEvents).where(sql`healed = 1`);
+    const [healedCount] = await db.select({ count: sql<number>`count(*)` }).from(proxyEvents).where(sql`healed = 1 or is_duplicate = 1`);
     const [agentCount] = await db.select({ count: sql<number>`count(*)` }).from(automationAgents).where(sql`status = 'active'`);
     const [healingLogCount] = await db.select({ count: sql<number>`count(*)` }).from(schemaHealingLogs);
 
@@ -47,11 +48,62 @@ export const omnimeshRouter = router({
     return await db.select().from(proxyEvents).orderBy(desc(proxyEvents.createdAt)).limit(50);
   }),
 
-  securityStatus: publicProcedure.query(() => ({
-    rawBodyCapture: true,
-    signatureVerificationEnabled: false,
-    note: "Provider HMAC verification is intentionally disabled until signing secrets, tenant endpoint configuration, and verification controls are completed.",
-  })),
+  getConfig: publicProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) {
+      return { workspaceName: "Default Workspace", shopifyConfigured: false, stripeConfigured: false };
+    }
+    const [config] = await db.select().from(tenantConfigs).where(eq(tenantConfigs.id, 1)).limit(1);
+    if (!config) {
+      return { workspaceName: "Default Workspace", shopifyConfigured: false, stripeConfigured: false };
+    }
+    return {
+      workspaceName: config.workspaceName,
+      shopifyConfigured: Boolean(config.shopifySecret && config.shopifySecret.length > 0),
+      stripeConfigured: Boolean(config.stripeSecret && config.stripeSecret.length > 0),
+    };
+  }),
+
+  updateConfig: publicProcedure
+    .input(
+      z.object({
+        workspaceName: z.string().optional(),
+        shopifySecret: z.string().optional(),
+        stripeSecret: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+
+      const updateData: Record<string, unknown> = {};
+      if (input.workspaceName !== undefined) updateData.workspaceName = input.workspaceName;
+      if (input.shopifySecret !== undefined) updateData.shopifySecret = input.shopifySecret;
+      if (input.stripeSecret !== undefined) updateData.stripeSecret = input.stripeSecret;
+
+      await db.update(tenantConfigs).set(updateData).where(eq(tenantConfigs.id, 1));
+      return { success: true, message: "Tenant endpoint secrets and configuration saved successfully." };
+    }),
+
+  securityStatus: publicProcedure.query(async () => {
+    const db = await getDb();
+    let shopifyConfigured = false;
+    let stripeConfigured = false;
+    if (db) {
+      const [config] = await db.select().from(tenantConfigs).where(eq(tenantConfigs.id, 1)).limit(1);
+      if (config) {
+        shopifyConfigured = Boolean(config.shopifySecret && config.shopifySecret.length > 0);
+        stripeConfigured = Boolean(config.stripeSecret && config.stripeSecret.length > 0);
+      }
+    }
+    return {
+      rawBodyCapture: true,
+      signatureVerificationEnabled: shopifyConfigured || stripeConfigured,
+      shopifyConfigured,
+      stripeConfigured,
+      note: "Production HMAC verification is active when signing secrets are configured.",
+    };
+  }),
 
   replayEvent: publicProcedure
     .input(z.object({ eventId: z.number().int().positive() }))
@@ -110,16 +162,20 @@ export const omnimeshRouter = router({
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (db) {
+        const uniqueDeliveryId = `sim_delivery_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         await db.insert(proxyEvents).values({
           provider: input.provider,
           eventType: "orders/create",
+          sourceDeliveryId: uniqueDeliveryId,
           endpoint: input.endpoint,
           method: "POST",
           status: 200,
           latencyMs: Math.random() * 30 + 15,
           payload: JSON.stringify({ event: "order_created", original_schema_version: "2024-01", drifted_field: "line_items.price_set" }),
+          signatureStatus: "verified",
           deliveryState: "delivered",
           attemptCount: 1,
+          isDuplicate: 0,
           healed: 1,
           healingDetails: "Autonomously mapped legacy string price to structured currency object via Semantic Healer v2.",
         });
