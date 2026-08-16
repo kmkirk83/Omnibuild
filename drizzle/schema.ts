@@ -6,7 +6,7 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "admin", "operator"]).default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -32,6 +32,8 @@ export const deliveryDestinations = mysqlTable("delivery_destinations", {
   name: varchar("name", { length: 128 }).notNull(),
   targetUrl: varchar("target_url", { length: 512 }).notNull(),
   providerFilter: varchar("provider_filter", { length: 64 }).notNull().default("all"),
+  maxRetries: int("max_retries").default(3).notNull(),
+  alertEmail: varchar("alert_email", { length: 255 }),
   isActive: int("is_active").default(1).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
@@ -39,6 +41,22 @@ export const deliveryDestinations = mysqlTable("delivery_destinations", {
 
 export type DeliveryDestination = typeof deliveryDestinations.$inferSelect;
 export type InsertDeliveryDestination = typeof deliveryDestinations.$inferInsert;
+
+export const healingRules = mysqlTable("healing_rules", {
+  id: int("id").autoincrement().primaryKey(),
+  ruleName: varchar("rule_name", { length: 128 }).notNull(),
+  targetProvider: varchar("target_provider", { length: 64 }).notNull().default("all"),
+  matchField: varchar("match_field", { length: 255 }).notNull(),
+  matchCondition: varchar("match_condition", { length: 64 }).notNull().default("missing_or_empty"),
+  transformAction: varchar("transform_action", { length: 64 }).notNull().default("inject_default"),
+  transformValue: text("transform_value"),
+  isActive: int("is_active").default(1).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type HealingRule = typeof healingRules.$inferSelect;
+export type InsertHealingRule = typeof healingRules.$inferInsert;
 
 export const proxyEvents = mysqlTable("proxy_events", {
   id: int("id").autoincrement().primaryKey(),

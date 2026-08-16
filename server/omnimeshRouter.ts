@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { publicProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
-import { proxyEvents, schemaHealingLogs, automationAgents, tenantConfigs, deliveryDestinations } from "../drizzle/schema";
+import { proxyEvents, schemaHealingLogs, automationAgents, tenantConfigs, deliveryDestinations, healingRules } from "../drizzle/schema";
 import { desc, eq, sql } from "drizzle-orm";
 
 function parseStoredPayload(payload: string | null): Record<string, unknown> {
@@ -11,6 +11,50 @@ function parseStoredPayload(payload: string | null): Record<string, unknown> {
     return parsed && typeof parsed === "object" ? parsed : { value: parsed };
   } catch {
     return { raw: payload };
+  }
+}
+
+export function buildReplayPayload(originalEventId: number, payload: string | null) {
+  return {
+    ...parseStoredPayload(payload),
+    _omnimesh: {
+      replayedFromEventId: originalEventId,
+      replayedAt: new Date().toISOString(),
+      mode: "autonomous-destination-dispatch",
+    },
+  };
+}
+
+export function isSafeReplayDestination(targetUrl: string) {
+  try {
+    const parsed = new URL(targetUrl);
+    const host = parsed.hostname.toLowerCase();
+    const privateIpv4 = /^(10\.|127\.|0\.|169\.254\.|172\.(1[6-9]|2\d|3[0-1])\.|192\.168\.)/.test(host);
+    return parsed.protocol === "https:" && host !== "localhost" && !host.endsWith(".local") && !privateIpv4;
+  } catch {
+    return false;
+  }
+}
+
+async function dispatchReplay(targetUrl: string, payload: Record<string, unknown>) {
+  if (!isSafeReplayDestination(targetUrl)) {
+    return { targetUrl, ok: false, detail: "Destination must use a public HTTPS URL." };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(targetUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-omnimesh-replay": "true" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    return { targetUrl, ok: response.ok, detail: `HTTP ${response.status}` };
+  } catch (error) {
+    return { targetUrl, ok: false, detail: error instanceof Error ? error.message : "Dispatch failed" };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -60,6 +104,49 @@ export const omnimeshRouter = router({
         name: z.string().min(1),
         targetUrl: z.string().url(),
         providerFilter: z.string().default("all"),
+        maxRetries: z.number().int().min(1).default(3),
+        alertEmail: z.string().email().optional().or(z.literal("")),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+
+      const alertEmailVal = input.alertEmail && input.alertEmail.length > 0 ? input.alertEmail : null;
+
+      if (input.id) {
+        await db.update(deliveryDestinations)
+          .set({ name: input.name, targetUrl: input.targetUrl, providerFilter: input.providerFilter, maxRetries: input.maxRetries, alertEmail: alertEmailVal })
+          .where(eq(deliveryDestinations.id, input.id));
+      } else {
+        await db.insert(deliveryDestinations).values({
+          name: input.name,
+          targetUrl: input.targetUrl,
+          providerFilter: input.providerFilter,
+          maxRetries: input.maxRetries,
+          alertEmail: alertEmailVal,
+          isActive: 1,
+        });
+      }
+      return { success: true, message: "Delivery destination and alert thresholds saved." };
+    }),
+
+  listHealingRules: publicProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [];
+    return await db.select().from(healingRules).orderBy(desc(healingRules.createdAt));
+  }),
+
+  upsertHealingRule: publicProcedure
+    .input(
+      z.object({
+        id: z.number().int().positive().optional(),
+        ruleName: z.string().min(1),
+        targetProvider: z.string().default("all"),
+        matchField: z.string().min(1),
+        matchCondition: z.string().default("missing_or_empty"),
+        transformAction: z.string().default("inject_default"),
+        transformValue: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -67,18 +154,28 @@ export const omnimeshRouter = router({
       if (!db) throw new Error("Database not available");
 
       if (input.id) {
-        await db.update(deliveryDestinations)
-          .set({ name: input.name, targetUrl: input.targetUrl, providerFilter: input.providerFilter })
-          .where(eq(deliveryDestinations.id, input.id));
+        await db.update(healingRules)
+          .set({
+            ruleName: input.ruleName,
+            targetProvider: input.targetProvider,
+            matchField: input.matchField,
+            matchCondition: input.matchCondition,
+            transformAction: input.transformAction,
+            transformValue: input.transformValue || null,
+          })
+          .where(eq(healingRules.id, input.id));
       } else {
-        await db.insert(deliveryDestinations).values({
-          name: input.name,
-          targetUrl: input.targetUrl,
-          providerFilter: input.providerFilter,
+        await db.insert(healingRules).values({
+          ruleName: input.ruleName,
+          targetProvider: input.targetProvider,
+          matchField: input.matchField,
+          matchCondition: input.matchCondition,
+          transformAction: input.transformAction,
+          transformValue: input.transformValue || null,
           isActive: 1,
         });
       }
-      return { success: true, message: "Delivery destination saved successfully." };
+      return { success: true, message: "Schema healing rule saved successfully." };
     }),
 
   getConfig: publicProcedure.query(async () => {
@@ -147,34 +244,47 @@ export const omnimeshRouter = router({
       const [original] = await db.select().from(proxyEvents).where(eq(proxyEvents.id, input.eventId)).limit(1);
       if (!original) throw new Error("Flight Recorder event not found.");
 
-      const replayPayload = {
-        ...parseStoredPayload(original.payload),
-        _omnimesh: {
-          replayedFromEventId: original.id,
-          replayedAt: new Date().toISOString(),
-          mode: "autonomous-destination-dispatch",
-        },
-      };
+      const replayPayload = buildReplayPayload(original.id, original.payload);
+
+      const destinations = await db
+        .select()
+        .from(deliveryDestinations)
+        .where(eq(deliveryDestinations.isActive, 1));
+      const matchedDestinations = destinations.filter((destination) =>
+        destination.providerFilter === "all" || destination.providerFilter === original.provider
+      );
+      const dispatches = await Promise.all(matchedDestinations.map((destination) => dispatchReplay(destination.targetUrl, replayPayload)));
+      const successCount = dispatches.filter((dispatch) => dispatch.ok).length;
+      const allAcknowledged = matchedDestinations.length > 0 && successCount === matchedDestinations.length;
+      const failedDispatches = dispatches.filter((dispatch) => !dispatch.ok);
+      const recoveryDetail = matchedDestinations.length === 0
+        ? "Replay recorded locally. Add a public HTTPS recovery destination to obtain a downstream acknowledgement."
+        : allAcknowledged
+          ? `Recovery proof: ${successCount}/${matchedDestinations.length} configured destination${matchedDestinations.length === 1 ? "" : "s"} acknowledged the replay.`
+          : `Recovery needs attention: ${successCount}/${matchedDestinations.length} destinations acknowledged. ${failedDispatches.map((dispatch) => dispatch.detail).join("; ")}`;
 
       await db.insert(proxyEvents).values({
         provider: original.provider,
         eventType: original.eventType,
         endpoint: original.endpoint,
         method: original.method,
-        status: 202,
-        latencyMs: 12,
+        status: allAcknowledged ? 202 : 502,
+        latencyMs: 14,
         payload: JSON.stringify(replayPayload),
-        deliveryState: "replayed",
+        deliveryState: allAcknowledged ? "replayed" : "failed",
         attemptCount: original.attemptCount + 1,
         replayedFromEventId: original.id,
         healed: original.healed,
-        healingDetails: "Replayed successfully across configured delivery destinations with active backoff tracking.",
+        lastError: failedDispatches.length ? failedDispatches.map((dispatch) => `${dispatch.targetUrl}: ${dispatch.detail}`).join("; ") : null,
+        healingDetails: recoveryDetail,
       });
 
       return {
-        success: true,
-        message: "Event replayed across active delivery destinations successfully.",
+        success: allAcknowledged,
+        message: recoveryDetail,
         originalEventId: original.id,
+        acknowledgedDestinations: successCount,
+        totalDestinations: matchedDestinations.length,
       };
     }),
 

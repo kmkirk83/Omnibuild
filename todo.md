@@ -25,9 +25,23 @@
 - [x] Implement the highest-value architecture and UX revisions
 - [x] Validate revised reliability flows, reports, diagrams, and responsive UI
 - [x] Save checkpoint and deliver architecture review update
+- [ ] Add destination-specific dead-letter alert thresholds and webhook test controls
+- [ ] Add operator role boundaries for sensitive workspace actions
+- [ ] Build and validate the visual schema-healing workflow builder
+- [ ] Validate and deliver the next autonomous rollout increment
+- [x] Add Shopify-native and Stripe-native setup guidance with familiar terminology
+- [x] Build a provider-specific first-incident flow from capture through proven recovery
+- [x] Reduce integration friction with copy-ready configuration and ecosystem-aligned defaults
+- [x] Refocus the product UX on Capture, Explain, Replay, and Prove Recovery
+- [ ] Implement a customer-ready Shopify or Stripe live incident-response path
+- [x] Validate one complete live-style incident recovery journey and remove nonessential dashboard complexity
 - [x] Preserve provider raw request bodies and capture signature readiness explicitly
 - [x] Persist provider delivery identifiers and correct provider event-type extraction
 - [x] Surface real ingestion-security readiness in the control-plane experience
 - [x] Verify the intended GitHub remote for the OmniMesh project
 - [x] Commit the completed OmniMesh architecture revision
 - [x] Push the committed revision to GitHub and confirm the resulting commit
+- [x] Simplify the primary dashboard to emphasize setup, Flight Recorder, replay, and recovery proof
+- [x] Re-run end-to-end browser validation after the streamlined dashboard change
+- [ ] Re-expose the schema-healing workflow only when it supports the core incident path
+- [ ] Validate schema-healing rule creation and persistence before declaring that workflow deliverable

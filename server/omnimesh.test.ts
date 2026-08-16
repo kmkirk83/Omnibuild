@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { appRouter } from "./routers";
+import { buildReplayPayload, isSafeReplayDestination } from "./omnimeshRouter";
 import { parseWebhookPayload, redactForFlightRecorder } from "./omnimeshWebhooks";
 
 describe("OmniMesh tRPC Router", () => {
@@ -48,5 +49,23 @@ describe("OmniMesh tRPC Router", () => {
     const payload = parseWebhookPayload(Buffer.from('{"id":"evt_123","type":"checkout.session.completed"}', "utf8"));
 
     expect(payload).toEqual({ id: "evt_123", type: "checkout.session.completed" });
+  });
+
+  it("adds immutable recovery context to every replay payload", () => {
+    const replay = buildReplayPayload(42, JSON.stringify({ id: "evt_123", amount: 2499 }));
+
+    expect(replay).toMatchObject({
+      id: "evt_123",
+      amount: 2499,
+      _omnimesh: { replayedFromEventId: 42, mode: "autonomous-destination-dispatch" },
+    });
+    expect(new Date(replay._omnimesh.replayedAt).toString()).not.toBe("Invalid Date");
+  });
+
+  it("only permits public HTTPS destinations for an external recovery attempt", () => {
+    expect(isSafeReplayDestination("https://worker.example.com/webhooks")).toBe(true);
+    expect(isSafeReplayDestination("http://worker.example.com/webhooks")).toBe(false);
+    expect(isSafeReplayDestination("https://localhost:3000/webhooks")).toBe(false);
+    expect(isSafeReplayDestination("https://192.168.1.20/webhooks")).toBe(false);
   });
 });
