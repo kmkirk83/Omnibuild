@@ -27,9 +27,22 @@ export const tenantConfigs = mysqlTable("tenant_configs", {
 export type TenantConfig = typeof tenantConfigs.$inferSelect;
 export type InsertTenantConfig = typeof tenantConfigs.$inferInsert;
 
+export const deliveryDestinations = mysqlTable("delivery_destinations", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  targetUrl: varchar("target_url", { length: 512 }).notNull(),
+  providerFilter: varchar("provider_filter", { length: 64 }).notNull().default("all"),
+  isActive: int("is_active").default(1).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DeliveryDestination = typeof deliveryDestinations.$inferSelect;
+export type InsertDeliveryDestination = typeof deliveryDestinations.$inferInsert;
+
 export const proxyEvents = mysqlTable("proxy_events", {
   id: int("id").autoincrement().primaryKey(),
-  provider: varchar("provider", { length: 64 }).notNull(), // 'shopify' | 'stripe' | 'custom'
+  provider: varchar("provider", { length: 64 }).notNull(),
   eventType: varchar("event_type", { length: 128 }).default("unknown").notNull(),
   sourceDeliveryId: varchar("source_delivery_id", { length: 255 }),
   endpoint: varchar("endpoint", { length: 255 }).notNull(),
@@ -38,12 +51,12 @@ export const proxyEvents = mysqlTable("proxy_events", {
   latencyMs: float("latency_ms").notNull(),
   payload: text("payload"),
   signatureStatus: mysqlEnum("signature_status", ["not_configured", "not_present", "verified", "invalid"]).default("not_configured").notNull(),
-  deliveryState: mysqlEnum("delivery_state", ["received", "delivered", "failed", "replayed"]).default("received").notNull(),
+  deliveryState: mysqlEnum("delivery_state", ["received", "delivered", "failed", "replayed", "dead_letter"]).default("received").notNull(),
   attemptCount: int("attempt_count").default(1).notNull(),
   isDuplicate: int("is_duplicate").default(0).notNull(),
   replayedFromEventId: int("replayed_from_event_id"),
   lastError: text("last_error"),
-  healed: int("healed").default(0).notNull(), // 0 = false, 1 = true
+  healed: int("healed").default(0).notNull(),
   healingDetails: text("healing_details"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
