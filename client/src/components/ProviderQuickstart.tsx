@@ -10,14 +10,14 @@ const setup = {
   shopify: {
     label: "Shopify",
     destination: "Your app's Webhooks configuration",
-    secret: "Shopify webhook HMAC secret",
+    secret: "Shopify app client secret (SHOPIFY_API_SECRET)",
     test: "Send a test delivery from Shopify, then open the matching event in Flight Recorder.",
     events: "orders/create, orders/updated, fulfillment_events/create",
   },
   stripe: {
     label: "Stripe",
     destination: "Developers → Webhooks → Add endpoint",
-    secret: "Stripe endpoint signing secret (whsec_...)",
+    secret: "Stripe endpoint signing secret (STRIPE_WEBHOOK_SECRET)",
     test: "Use Send test webhook in Stripe, then open the matching event in Flight Recorder.",
     events: "payment_intent.succeeded, checkout.session.completed, charge.refunded",
   },
@@ -71,8 +71,8 @@ export function ProviderQuickstart({ baseUrl }: { baseUrl: string }) {
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">2. Secure it</p>
-            <p className="mt-1 text-sm text-white">Add your <span className="text-emerald-300">{details.secret}</span> in OmniMesh.</p>
-            <p className="mt-1 text-xs text-slate-400">Raw request bodies are verified before any event is captured or replayed.</p>
+            <p className="mt-1 text-sm text-white">Set your <span className="text-emerald-300">{details.secret}</span> in the server environment.</p>
+            <p className="mt-1 text-xs text-slate-400">Raw request bodies are verified before any event is captured or replayed; secrets are never sent through this dashboard.</p>
           </div>
         </div>
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">

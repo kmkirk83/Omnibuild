@@ -1,21 +1,38 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# OmniMesh
 
-# Run and deploy your AI Studio app
+OmniMesh is an authenticated operational console for receiving, verifying, recording, and safely replaying Shopify and Stripe webhook deliveries.
 
-This contains everything you need to run your app locally.
+## Local setup
 
-View your app in AI Studio: https://ai.studio/apps/d4999999-6d81-4fd6-a773-9e5c0485364a
+Install the project dependencies, copy the environment template, and start the development server.
 
-## Run Locally
+```bash
+pnpm install
+cp .env.example .env
+pnpm dev
+```
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+Do not commit `.env`. The application loads all webhook secrets from server environment variables and never accepts or persists them through the dashboard.
 
+## Webhook configuration
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
+| Provider | Endpoint | Required server variable | Local-development path |
+|---|---|---|---|
+| Stripe | `https://<your-domain>/webhooks/stripe` | `STRIPE_WEBHOOK_SECRET` | Run `stripe listen --forward-to http://localhost:3000/webhooks/stripe`, then copy the printed `whsec_…` value into `.env`. |
+| Shopify | `https://<your-domain>/webhooks/shopify` | `SHOPIFY_API_SECRET` | Use the client secret of the Shopify app that created the webhook subscription. |
+
+The ingress fails closed: a missing, invalid, or expired provider signature receives an error response and its payload is never stored. Stripe verification includes a five-minute timestamp tolerance to limit replay attempts. The dashboard and recovery controls require a signed-in administrator.
+
+## Production rollout
+
+Create a new Stripe webhook endpoint on the production URL (preferably a versioned endpoint such as `/webhooks/stripe-v2` for a zero-risk cutover) and immediately save its new signing secret in the deployment environment as `STRIPE_WEBHOOK_SECRET`. For Shopify, configure the app client secret as `SHOPIFY_API_SECRET`. Deploy, send a native test delivery from each provider, verify the `verified` status in Flight Recorder, then disable the legacy Stripe endpoint only after the new endpoint is confirmed.
+
+> Stripe signing secrets are endpoint-specific and cannot be derived from Shopify. Shopify does not provide a `whsec_…` value; its HTTPS webhooks use the app client secret to generate `X-Shopify-Hmac-SHA256`.
+
+## Validation
+
+```bash
+pnpm test
+pnpm check
+pnpm build
+```

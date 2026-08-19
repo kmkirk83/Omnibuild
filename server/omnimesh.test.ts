@@ -1,7 +1,8 @@
+import crypto from "crypto";
 import { describe, it, expect } from "vitest";
 import { appRouter } from "./routers";
 import { buildReplayPayload, isSafeReplayDestination } from "./omnimeshRouter";
-import { parseWebhookPayload, redactForFlightRecorder } from "./omnimeshWebhooks";
+import { parseWebhookPayload, redactForFlightRecorder, verifyShopifyHmac, verifyStripeSignature } from "./omnimeshWebhooks";
 
 describe("OmniMesh tRPC Router", () => {
   it("should return metrics", async () => {
@@ -49,6 +50,26 @@ describe("OmniMesh tRPC Router", () => {
     const payload = parseWebhookPayload(Buffer.from('{"id":"evt_123","type":"checkout.session.completed"}', "utf8"));
 
     expect(payload).toEqual({ id: "evt_123", type: "checkout.session.completed" });
+  });
+
+  it("verifies Shopify HMAC values against the untouched request body", () => {
+    const rawBody = Buffer.from('{"id":42,"email":"buyer@example.com"}', "utf8");
+    const secret = "shopify_test_secret";
+    const signature = crypto.createHmac("sha256", secret).update(rawBody).digest("base64");
+
+    expect(verifyShopifyHmac(rawBody, signature, secret)).toBe(true);
+    expect(verifyShopifyHmac(rawBody, "not-a-valid-signature", secret)).toBe(false);
+  });
+
+  it("verifies current Stripe signatures and rejects expired deliveries", () => {
+    const rawBody = Buffer.from('{"id":"evt_123","type":"checkout.session.completed"}', "utf8");
+    const secret = "whsec_test_secret";
+    const timestamp = 1_700_000_000;
+    const signature = crypto.createHmac("sha256", secret).update(`${timestamp}.${rawBody.toString("utf8")}`).digest("hex");
+    const header = `t=${timestamp},v1=${signature}`;
+
+    expect(verifyStripeSignature(rawBody, header, secret, timestamp * 1000)).toBe(true);
+    expect(verifyStripeSignature(rawBody, header, secret, (timestamp + 301) * 1000)).toBe(false);
   });
 
   it("adds immutable recovery context to every replay payload", () => {

@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, router } from "./_core/trpc";
+import { getWebhookSecurityStatus } from "./omnimeshWebhooks";
 import { getDb } from "./db";
 import { proxyEvents, schemaHealingLogs, automationAgents, tenantConfigs, deliveryDestinations, healingRules } from "../drizzle/schema";
 import { desc, eq, sql } from "drizzle-orm";
@@ -59,7 +60,7 @@ async function dispatchReplay(targetUrl: string, payload: Record<string, unknown
 }
 
 export const omnimeshRouter = router({
-  metrics: publicProcedure.query(async () => {
+  metrics: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) {
       return {
@@ -85,19 +86,19 @@ export const omnimeshRouter = router({
     };
   }),
 
-  listEvents: publicProcedure.query(async () => {
+  listEvents: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
     return await db.select().from(proxyEvents).orderBy(desc(proxyEvents.createdAt)).limit(50);
   }),
 
-  listDestinations: publicProcedure.query(async () => {
+  listDestinations: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
     return await db.select().from(deliveryDestinations).orderBy(desc(deliveryDestinations.createdAt));
   }),
 
-  upsertDestination: publicProcedure
+  upsertDestination: adminProcedure
     .input(
       z.object({
         id: z.number().int().positive().optional(),
@@ -131,13 +132,13 @@ export const omnimeshRouter = router({
       return { success: true, message: "Delivery destination and alert thresholds saved." };
     }),
 
-  listHealingRules: publicProcedure.query(async () => {
+  listHealingRules: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
     return await db.select().from(healingRules).orderBy(desc(healingRules.createdAt));
   }),
 
-  upsertHealingRule: publicProcedure
+  upsertHealingRule: adminProcedure
     .input(
       z.object({
         id: z.number().int().positive().optional(),
@@ -178,64 +179,31 @@ export const omnimeshRouter = router({
       return { success: true, message: "Schema healing rule saved successfully." };
     }),
 
-  getConfig: publicProcedure.query(async () => {
+  getConfig: adminProcedure.query(async () => {
     const db = await getDb();
-    if (!db) {
-      return { workspaceName: "Default Workspace", shopifyConfigured: false, stripeConfigured: false };
-    }
-    const [config] = await db.select().from(tenantConfigs).where(eq(tenantConfigs.id, 1)).limit(1);
-    if (!config) {
-      return { workspaceName: "Default Workspace", shopifyConfigured: false, stripeConfigured: false };
-    }
+    const [config] = db ? await db.select().from(tenantConfigs).where(eq(tenantConfigs.id, 1)).limit(1) : [];
     return {
-      workspaceName: config.workspaceName,
-      shopifyConfigured: Boolean(config.shopifySecret && config.shopifySecret.length > 0),
-      stripeConfigured: Boolean(config.stripeSecret && config.stripeSecret.length > 0),
+      workspaceName: config?.workspaceName ?? "Default Workspace",
+      ...getWebhookSecurityStatus(),
     };
   }),
 
-  updateConfig: publicProcedure
-    .input(
-      z.object({
-        workspaceName: z.string().optional(),
-        shopifySecret: z.string().optional(),
-        stripeSecret: z.string().optional(),
-      })
-    )
+  updateConfig: adminProcedure
+    .input(z.object({ workspaceName: z.string().min(1).max(128) }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
-
-      const updateData: Record<string, unknown> = {};
-      if (input.workspaceName !== undefined) updateData.workspaceName = input.workspaceName;
-      if (input.shopifySecret !== undefined) updateData.shopifySecret = input.shopifySecret;
-      if (input.stripeSecret !== undefined) updateData.stripeSecret = input.stripeSecret;
-
-      await db.update(tenantConfigs).set(updateData).where(eq(tenantConfigs.id, 1));
-      return { success: true, message: "Tenant endpoint secrets and configuration saved successfully." };
+      await db.update(tenantConfigs).set({ workspaceName: input.workspaceName }).where(eq(tenantConfigs.id, 1));
+      return { success: true, message: "Workspace configuration saved successfully." };
     }),
 
-  securityStatus: publicProcedure.query(async () => {
-    const db = await getDb();
-    let shopifyConfigured = false;
-    let stripeConfigured = false;
-    if (db) {
-      const [config] = await db.select().from(tenantConfigs).where(eq(tenantConfigs.id, 1)).limit(1);
-      if (config) {
-        shopifyConfigured = Boolean(config.shopifySecret && config.shopifySecret.length > 0);
-        stripeConfigured = Boolean(config.stripeSecret && config.stripeSecret.length > 0);
-      }
-    }
-    return {
-      rawBodyCapture: true,
-      signatureVerificationEnabled: shopifyConfigured || stripeConfigured,
-      shopifyConfigured,
-      stripeConfigured,
-      note: "Production HMAC verification is active when signing secrets are configured.",
-    };
-  }),
+  securityStatus: adminProcedure.query(() => ({
+    rawBodyCapture: true,
+    ...getWebhookSecurityStatus(),
+    note: "Webhook signing secrets are loaded from the server environment and never stored in the control-plane database.",
+  })),
 
-  replayEvent: publicProcedure
+  replayEvent: adminProcedure
     .input(z.object({ eventId: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -288,19 +256,19 @@ export const omnimeshRouter = router({
       };
     }),
 
-  listHealingLogs: publicProcedure.query(async () => {
+  listHealingLogs: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
     return await db.select().from(schemaHealingLogs).orderBy(desc(schemaHealingLogs.createdAt)).limit(50);
   }),
 
-  listAgents: publicProcedure.query(async () => {
+  listAgents: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
     return await db.select().from(automationAgents).orderBy(desc(automationAgents.createdAt));
   }),
 
-  simulateDrift: publicProcedure
+  simulateDrift: adminProcedure
     .input(z.object({ provider: z.string(), endpoint: z.string() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
