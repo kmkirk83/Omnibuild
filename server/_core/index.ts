@@ -8,7 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { registerOmnimeshWebhookRoutes } from "../omnimeshWebhooks";
+import { createOmnimeshWebhookApp } from "../omnimeshWebhookApp";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -30,19 +30,15 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
-  const app = express();
+  const app = createOmnimeshWebhookApp();
   const server = createServer(app);
-  // Provider signatures are calculated over the exact raw request body. These
-  // routes must run before global JSON parsing so OmniMesh can verify them once
-  // the tenant-owned signing secrets are configured.
-  app.use("/webhooks/shopify", express.raw({ type: "application/json", limit: "2mb" }));
-  app.use("/webhooks/stripe", express.raw({ type: "application/json", limit: "2mb" }));
+  // Provider signatures are calculated over the exact raw request body. The
+  // shared ingress registers its raw-body middleware before global JSON parsing.
   // Configure body parser with larger size limit for application requests.
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
-  registerOmnimeshWebhookRoutes(app);
   // tRPC API
   app.use(
     "/api/trpc",

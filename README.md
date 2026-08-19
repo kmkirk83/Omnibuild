@@ -23,6 +23,10 @@ Do not commit `.env`. The application loads all webhook secrets from server envi
 
 The ingress fails closed: a missing, invalid, or expired provider signature receives an error response and its payload is never stored. Stripe verification includes a five-minute timestamp tolerance to limit replay attempts. The dashboard and recovery controls require a signed-in administrator.
 
+## Vercel deployment
+
+`vercel.json` rewrites the provider-facing paths to the Vercel serverless function while keeping the public URLs unchanged. Set `STRIPE_WEBHOOK_SECRET` and `SHOPIFY_API_SECRET` in the Vercel project’s **Production** environment before adding either provider endpoint. These values are intentionally not configurable through the dashboard or source control.
+
 ## Production rollout
 
 Create a new Stripe webhook endpoint on the production URL (preferably a versioned endpoint such as `/webhooks/stripe-v2` for a zero-risk cutover) and immediately save its new signing secret in the deployment environment as `STRIPE_WEBHOOK_SECRET`. For Shopify, configure the app client secret as `SHOPIFY_API_SECRET`. Deploy, send a native test delivery from each provider, verify the `verified` status in Flight Recorder, then disable the legacy Stripe endpoint only after the new endpoint is confirmed.

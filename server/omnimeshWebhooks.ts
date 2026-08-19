@@ -236,14 +236,15 @@ async function ingestWebhook(provider: WebhookProvider, req: Request, res: Respo
   });
 }
 
-export function registerOmnimeshWebhookRoutes(app: Express) {
-  app.post(webhookSetupPaths.shopify, (req, res) => {
+export function registerOmnimeshWebhookRoutes(app: Express, routePrefix = "") {
+  const prefix = routePrefix.replace(/\/$/, "");
+  app.post(`${prefix}${webhookSetupPaths.shopify}`, (req, res) => {
     void ingestWebhook("shopify", req, res).catch(() => {
       res.status(500).json({ accepted: false, message: "OmniMesh gateway processing error." });
     });
   });
 
-  app.post(webhookSetupPaths.stripe, (req, res) => {
+  app.post(`${prefix}${webhookSetupPaths.stripe}`, (req, res) => {
     void ingestWebhook("stripe", req, res).catch(() => {
       res.status(500).json({ accepted: false, message: "OmniMesh gateway processing error." });
     });
